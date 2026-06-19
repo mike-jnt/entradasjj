@@ -5319,9 +5319,9 @@
 
           <section class="card card-pad" id="readerView" style="display:none;">
             <h2>Lector de QR</h2>
-            <p class="mini-note">Selecciona el día del curso y escanea el ticket. El día 1 registra pago y asistencia; del día 2 al 4 solo asistencia.</p>
+            <p class="mini-note" id="readerHelpText">Selecciona el día del curso y escanea el ticket. El día 1 registra pago y asistencia; del día 2 al 4 solo asistencia.</p>
 
-            <label for="scanDay">Día de asistencia</label>
+            <label for="scanDay" id="scanDayLabel">Día de asistencia</label>
             <select id="scanDay">
               <option value="1">Día 1 - Pago + asistencia</option>
               <option value="2">Día 2 - Solo asistencia</option>
@@ -5472,6 +5472,7 @@
       courseName: "Curso de CapCut",
       coursePrice: 259000,
       courseMode: "presencial",
+      attendanceValidationRequired: true,
       sites: ["Puerto Caicedo", "Puerto Asís", "La Hormiga"]
     };
 
@@ -5637,6 +5638,7 @@
         courseName: String(settings.courseName || DEFAULT_COURSE_SETTINGS.courseName).trim() || DEFAULT_COURSE_SETTINGS.courseName,
         coursePrice: Number(settings.coursePrice || DEFAULT_COURSE_SETTINGS.coursePrice),
         courseMode: String(settings.courseMode || DEFAULT_COURSE_SETTINGS.courseMode).toLowerCase() === "virtual" ? "virtual" : "presencial",
+        attendanceValidationRequired: typeof settings.attendanceValidationRequired === "boolean" ? settings.attendanceValidationRequired : DEFAULT_COURSE_SETTINGS.attendanceValidationRequired,
         sites: sites.length ? sites : DEFAULT_COURSE_SETTINGS.sites
       };
     }
@@ -5653,6 +5655,21 @@
       return getCourseMode(student) === "virtual" ? "Virtual" : "Presencial";
     }
 
+    function isAttendanceValidationEnabled(student = null) {
+      const snapshot = student?.courseConfigSnapshot && typeof student.courseConfigSnapshot === "object"
+        ? student.courseConfigSnapshot
+        : null;
+
+      if (typeof student?.attendanceValidationRequired === "boolean") return student.attendanceValidationRequired;
+      if (snapshot && typeof snapshot.attendanceValidationRequired === "boolean") return snapshot.attendanceValidationRequired;
+      if (typeof courseSettings.attendanceValidationRequired === "boolean") return courseSettings.attendanceValidationRequired;
+      return DEFAULT_COURSE_SETTINGS.attendanceValidationRequired;
+    }
+
+    function getAttendanceValidationLabel(student = null) {
+      return isAttendanceValidationEnabled(student) ? "Validación de asistencia activa" : "Sin validación de asistencia";
+    }
+
     function getConfiguredSites() {
       const settings = normalizeCourseSettings(courseSettings);
       return settings.courseMode === "virtual" ? ["Virtual"] : settings.sites;
@@ -5663,6 +5680,7 @@
       const courseName = courseSettings.courseName;
       const coursePrice = Number(courseSettings.coursePrice || DEFAULT_COURSE_SETTINGS.coursePrice);
       const isVirtual = courseSettings.courseMode === "virtual";
+      const attendanceEnabled = isAttendanceValidationEnabled();
 
       if ($("systemTitle")) $("systemTitle").textContent = "Sistema de Cupos";
       if ($("systemSubtitle")) {
@@ -5686,6 +5704,15 @@
       if ($("searchInput")) {
         $("searchInput").placeholder = `Buscar alumno, teléfono, sede o ticket de ${courseName}`;
       }
+
+      if ($("readerHelpText")) {
+        $("readerHelpText").textContent = attendanceEnabled
+          ? "Selecciona el día del curso y escanea el ticket. El día 1 registra pago y asistencia; del día 2 al 4 solo asistencia."
+          : "Escanea el ticket solo para validar la reserva. La asistencia no se marcará para este curso.";
+      }
+
+      if ($("scanDayLabel")) $("scanDayLabel").style.display = attendanceEnabled ? "block" : "none";
+      if ($("scanDay")) $("scanDay").style.display = attendanceEnabled ? "block" : "none";
     }
 
     async function loadCourseSettings() {
@@ -5726,6 +5753,13 @@
               <option value="virtual" ${isVirtual ? "selected" : ""}>Virtual</option>
             </select>
 
+            <label for="configAttendanceValidation">Validar asistencia</label>
+            <select id="configAttendanceValidation" required>
+              <option value="yes" ${isAttendanceValidationEnabled() ? "selected" : ""}>Sí, registrar asistencia con QR</option>
+              <option value="no" ${!isAttendanceValidationEnabled() ? "selected" : ""}>No, solo validar reserva/ticket</option>
+            </select>
+            <p class="mini-note">Si eliges “No”, el sistema no marcará asistencia al escanear tickets ni desde la vista de validación.</p>
+
             <div id="configSitesBox" style="display:${isVirtual ? "none" : "block"};">
               <label for="configSites">Ciudades o sedes disponibles</label>
               <textarea id="configSites" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Escribe una sede por línea">${escapeHtml(sitesText)}</textarea>
@@ -5741,7 +5775,8 @@
           <div class="settings-preview">
             <span>Vista actual</span>
             <strong>${escapeHtml(courseSettings.courseName)}</strong>
-            <p class="mini-note" style="margin:0 0 10px;">${currency.format(Number(courseSettings.coursePrice || 0))} · ${isVirtual ? "Virtual" : "Presencial"}</p>
+            <p class="mini-note" style="margin:0 0 6px;">${currency.format(Number(courseSettings.coursePrice || 0))} · ${isVirtual ? "Virtual" : "Presencial"}</p>
+            <p class="mini-note" style="margin:0 0 10px;"><strong>Asistencia:</strong> ${isAttendanceValidationEnabled() ? "Se valida con QR" : "No requiere validación"}</p>
             <span>${isVirtual ? "Modalidad" : "Sedes activas"}</span>
             <ul class="settings-list">
               ${getConfiguredSites().map(site => `<li>${escapeHtml(site)}</li>`).join("")}
@@ -5785,6 +5820,7 @@
 
       const price = parseCOP($("configCoursePrice").value);
       const mode = $("configCourseMode").value === "virtual" ? "virtual" : "presencial";
+      const attendanceValidationRequired = $("configAttendanceValidation")?.value !== "no";
       const sites = String($("configSites")?.value || "")
         .split(/\n|,/)
         .map(site => site.trim())
@@ -5809,6 +5845,7 @@
         courseName: $("configCourseName").value.trim(),
         coursePrice: price,
         courseMode: mode,
+        attendanceValidationRequired,
         sites: sites.length ? sites : courseSettings.sites
       });
 
@@ -5907,6 +5944,7 @@
     }
 
     function attendanceSummary(student) {
+      if (!isAttendanceValidationEnabled(student)) return "No requiere validación";
       const attendance = getAttendance(student);
       const days = [1, 2, 3, 4].map(day => attendance[attendanceKey(day)] ? "D" + day + " ✓" : "D" + day + " —");
       return days.join(" · ");
@@ -5970,6 +6008,11 @@
     }
 
     async function markAttendance(student, day, type = "attendance") {
+      if (!isAttendanceValidationEnabled(student)) {
+        alert("La validación de asistencia está desactivada para este curso.");
+        return false;
+      }
+
       if (isDayAttended(student, day)) {
         alert(`Este estudiante ya tiene registrada la asistencia del día ${day}.`);
         return false;
@@ -6931,6 +6974,11 @@
         return;
       }
 
+      if (!isAttendanceValidationEnabled(student)) {
+        alert("La validación de asistencia está desactivada para este curso. Este ticket solo necesita validación de reserva.");
+        return;
+      }
+
       if (Number(day) === 1) {
         openPayDialog(student, 1);
         return;
@@ -6983,8 +7031,13 @@
         return;
       }
 
+      if (attendanceDay && !isAttendanceValidationEnabled(student)) {
+        attendanceDay = null;
+      }
+
       const paidTotal = Number(student.deposit || 0) + Number(student.extraPaid || 0);
       const balance = Math.max(Number(student.coursePrice || 0) - paidTotal, 0);
+      const attendanceEnabled = isAttendanceValidationEnabled(student);
 
       $("payDialogBody").innerHTML = `
         <div class="student-big">
@@ -7102,6 +7155,7 @@
 
       const paidTotal = Number(student.deposit || 0) + Number(student.extraPaid || 0);
       const balance = Math.max(Number(student.coursePrice || 0) - paidTotal, 0);
+      const attendanceEnabled = isAttendanceValidationEnabled(student);
 
       $("validationSection").innerHTML = `
         <div class="student-big">
@@ -7123,25 +7177,38 @@
 
         <p class="mini-note"><strong>Asistencia:</strong> ${escapeHtml(attendanceSummary(student))}</p>
 
-        <label for="validationAttendanceDay">Día de asistencia</label>
-        <select id="validationAttendanceDay">
-          <option value="1">Día 1 - Pago + asistencia</option>
-          <option value="2">Día 2 - Solo asistencia</option>
-          <option value="3">Día 3 - Solo asistencia</option>
-          <option value="4">Día 4 - Solo asistencia</option>
-        </select>
+        ${attendanceEnabled ? `
+          <label for="validationAttendanceDay">Día de asistencia</label>
+          <select id="validationAttendanceDay">
+            <option value="1">Día 1 - Pago + asistencia</option>
+            <option value="2">Día 2 - Solo asistencia</option>
+            <option value="3">Día 3 - Solo asistencia</option>
+            <option value="4">Día 4 - Solo asistencia</option>
+          </select>
+        ` : `
+          <div class="alert alert-success">
+            La validación de asistencia está desactivada para este curso. Este QR solo confirma que la reserva existe y está activa.
+          </div>
+        `}
 
         <div class="btns">
-          <button class="primary" id="registerFromQrBtn">Continuar registro</button>
+          ${attendanceEnabled ? `<button class="primary" id="registerFromQrBtn">Continuar registro</button>` : `<button class="primary" id="openPayNoAttendanceBtn">Registrar pago sin asistencia</button>`}
           <button class="secondary" id="backHomeBtn">Volver al panel</button>
         </div>
       `;
 
-      $("registerFromQrBtn").onclick = () => {
-        const day = Number($("validationAttendanceDay").value || 1);
-        if (day === 1) openPayDialog(student, 1);
-        else openAttendanceDialog(student, day);
-      };
+      if (attendanceEnabled && $("registerFromQrBtn")) {
+        $("registerFromQrBtn").onclick = () => {
+          const day = Number($("validationAttendanceDay").value || 1);
+          if (day === 1) openPayDialog(student, 1);
+          else openAttendanceDialog(student, day);
+        };
+      }
+
+      if (!attendanceEnabled && $("openPayNoAttendanceBtn")) {
+        $("openPayNoAttendanceBtn").onclick = () => openPayDialog(student);
+      }
+
       $("backHomeBtn").onclick = () => window.location.href = getBaseUrl();
     }
 
@@ -7384,6 +7451,12 @@
           return;
         }
 
+        if (!isAttendanceValidationEnabled(student)) {
+          $("scanResult").innerHTML = `<strong>Ticket válido:</strong> ${escapeHtml(student.name)}. La validación de asistencia está desactivada para este curso.`;
+          stopScanner();
+          return;
+        }
+
         const day = Number($("scanDay")?.value || 1);
         $("scanResult").innerHTML = `<strong>Encontrado:</strong> ${escapeHtml(student.name)}. Abriendo registro del día ${day}...`;
 
@@ -7450,6 +7523,7 @@
         phone: cleanPhone($("phone").value),
         courseName: getCourseName(),
         courseMode: getCourseMode(),
+        attendanceValidationRequired: isAttendanceValidationEnabled(),
         coursePrice,
         deposit,
         extraPaid: 0,
