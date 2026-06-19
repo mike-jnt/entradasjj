@@ -5242,8 +5242,8 @@
             <label for="name">Nombre completo</label>
             <input id="name" type="text" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" required />
 
-            <label for="phone">Número de teléfono</label>
-            <input id="phone" type="tel" autocomplete="off" autocorrect="off" spellcheck="false" required />
+            <label for="phone">Número de teléfono <span style="color:#64748b;font-weight:700;">(opcional)</span></label>
+            <input id="phone" type="tel" autocomplete="off" autocorrect="off" spellcheck="false" />
 
             <div class="row">
               <div>
@@ -5945,20 +5945,8 @@
     }
 
     function validatePhoneForStudent(student, inputId = "phoneCheck") {
-      const saved = cleanPhone(student.phone || "");
-      if (!saved) return true;
-
-      const typed = cleanPhone($(inputId)?.value || "");
-      if (!typed) {
-        alert("Para proteger el cupo, escribe el número de teléfono registrado por el estudiante.");
-        return false;
-      }
-
-      if (typed !== saved) {
-        alert("El número de teléfono no coincide con el registro. Verifica la identidad antes de continuar.");
-        return false;
-      }
-
+      // Verificación de teléfono desactivada por solicitud del administrador.
+      // El sistema permite registrar pagos y asistencias sin comparar el número.
       return true;
     }
 
@@ -6960,13 +6948,9 @@
           ${already ? `Este estudiante ya tiene registrada la asistencia del día ${day}.` : `Vas a registrar asistencia para el día ${day}.`}
         </div>
 
-        ${student.phone ? `
-          <label for="phoneCheckAttendance">Validar teléfono registrado</label>
-          <input id="phoneCheckAttendance" type="tel" inputmode="tel" autocomplete="off" autocorrect="off" spellcheck="false" />
-          <p class="mini-note">Este número no aparece en el ticket. Sirve para evitar que otra persona use un QR compartido.</p>
-        ` : `
-          <div class="alert alert-warning">Este estudiante no tiene teléfono registrado. Valida su identidad manualmente antes de continuar.</div>
-        `}
+        <div class="alert alert-success">
+          La verificación por número de teléfono está desactivada. Puedes registrar la asistencia directamente.
+        </div>
 
         <p class="mini-note"><strong>Asistencia actual:</strong> ${escapeHtml(attendanceSummary(student))}</p>
 
@@ -6977,7 +6961,6 @@
       `;
 
       $("confirmAttendanceBtn").onclick = async () => {
-        if (!validatePhoneForStudent(student, "phoneCheckAttendance")) return;
         const done = await markAttendance(student, day, "attendance");
         if (done) {
           attendanceDialog.close();
