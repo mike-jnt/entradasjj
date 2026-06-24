@@ -6012,10 +6012,27 @@
 
     function setupMoneyInputs(scope = document) {
       scope.querySelectorAll(".money-input").forEach(input => {
+        if (input.dataset.moneyInputReady === "true") return;
+        input.dataset.moneyInputReady = "true";
+
+        input.addEventListener("focus", () => {
+          if (!input.value.trim()) return;
+          setTimeout(() => input.select(), 0);
+        });
+
+        input.addEventListener("keydown", (event) => {
+          if (!["Backspace", "Delete"].includes(event.key)) return;
+          if (!input.value.trim()) return;
+
+          event.preventDefault();
+          input.value = "";
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
         input.addEventListener("input", () => {
           const raw = parseCOP(input.value);
           input.value = raw ? formatCOPInput(raw) : "";
-          input.setSelectionRange(input.value.length, input.value.length);
+          if (input.value) input.setSelectionRange(input.value.length, input.value.length);
         });
 
         input.addEventListener("blur", () => formatMoneyField(input));
