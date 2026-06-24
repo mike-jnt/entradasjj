@@ -5176,10 +5176,63 @@
 
     .settings-list li:last-child { border-bottom: 0; }
 
+    .discount-preview-amount {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .discount-preview-amount div {
+      background: rgba(255, 255, 255, .65);
+      border: 1px solid #fed7aa;
+      border-radius: 12px;
+      padding: 9px;
+    }
+
+    .discount-preview-amount span {
+      display: block;
+      color: #92400e;
+      font-size: 10px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 4px;
+    }
+
+    .discount-preview-amount strong {
+      display: block;
+      font-size: 14px;
+      color: #111827;
+      letter-spacing: -.03em;
+    }
+
+    @media (max-width: 700px) {
+      .discount-preview-amount {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 900px) {
       .settings-grid { grid-template-columns: 1fr; }
     }
 
+
+
+
+    /* BOTÓN EDITAR EN LISTADO DE ALUMNOS */
+    #studentsView .actions button[data-action="edit"] {
+      background: #f3f4f6;
+      color: #111827;
+      border: 1px solid #e5e7eb;
+    }
+
+    @media (min-width: 901px) {
+      #studentsView th:last-child,
+      #studentsView td:last-child {
+        width: 430px !important;
+      }
+    }
 
   </style>
 </head>
@@ -5260,6 +5313,20 @@
                 <input id="deposit" class="money-input" type="text" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" required />
               </div>
             </div>
+
+            <div class="row">
+              <div>
+                <label for="discount">Descuento especial (COP)</label>
+                <input id="discount" class="money-input" type="text" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="$0 COP" />
+                <p class="mini-note price-note">Opcional. Úsalo cuando quieras dejar la entrada más económica para un alumno específico.</p>
+              </div>
+              <div>
+                <label for="discountReason">Motivo del descuento</label>
+                <input id="discountReason" type="text" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Ej: promoción especial, cortesía, referido" />
+              </div>
+            </div>
+
+            <div id="discountPreview" class="alert alert-success" style="display:none; margin-top:12px;"></div>
 
             <label for="city" id="cityLabel">Ciudad / sede</label>
             <select id="city" autocomplete="off" required>
@@ -5437,6 +5504,14 @@
     <div class="card-pad" id="attendanceDialogBody"></div>
   </dialog>
 
+  <dialog id="editStudentDialog">
+    <div class="dialog-head">
+      <h3>Editar alumno</h3>
+      <button class="close" type="button" onclick="editStudentDialog.close()">Cerrar</button>
+    </div>
+    <div class="card-pad" id="editStudentBody"></div>
+  </dialog>
+
   <script type="module">
     /*
       PASO 1:
@@ -5554,6 +5629,7 @@
     const ticketDialog = document.getElementById("ticketDialog");
     const payDialog = document.getElementById("payDialog");
     const attendanceDialog = document.getElementById("attendanceDialog");
+    const editStudentDialog = document.getElementById("editStudentDialog");
     const loginDialog = document.getElementById("loginDialog");
     const mobileLoginDialog = document.getElementById("mobileLoginDialog");
 
@@ -5619,6 +5695,70 @@
       if (!$("coursePrice")) return;
       const selectedPrice = Number(value || courseSettings.coursePrice || DEFAULT_COURSE_SETTINGS.coursePrice);
       $("coursePrice").value = String(selectedPrice);
+      renderDiscountPreview();
+    }
+
+    function getBaseCoursePrice(student = null) {
+      const savedBasePrice = Number(student?.baseCoursePrice ?? student?.coursePriceBeforeDiscount ?? 0);
+      if (savedBasePrice > 0) return savedBasePrice;
+
+      const savedFinalPrice = Number(student?.coursePrice || 0);
+      const discount = getDiscountAmount(student);
+      if (savedFinalPrice > 0 && discount > 0) return savedFinalPrice + discount;
+
+      return savedFinalPrice;
+    }
+
+    function getDiscountAmount(student = null) {
+      return Number(student?.discountAmount ?? student?.discount ?? 0);
+    }
+
+    function getFinalCoursePrice(student = null) {
+      const savedFinalPrice = Number(student?.coursePrice || 0);
+      const basePrice = getBaseCoursePrice(student);
+      const discount = getDiscountAmount(student);
+      if (savedFinalPrice > 0 || !basePrice) return savedFinalPrice;
+      return Math.max(basePrice - discount, 0);
+    }
+
+    function getRegistrationPricing() {
+      const baseCoursePrice = parseCOP($("coursePrice")?.value || courseSettings.coursePrice);
+      const discount = parseCOP($("discount")?.value || 0);
+      const finalCoursePrice = Math.max(baseCoursePrice - discount, 0);
+      return { baseCoursePrice, discount, finalCoursePrice };
+    }
+
+    function renderDiscountPreview() {
+      if (!$("discountPreview") || !$("coursePrice")) return;
+
+      const { baseCoursePrice, discount, finalCoursePrice } = getRegistrationPricing();
+
+      if (!discount) {
+        $("discountPreview").style.display = "none";
+        $("discountPreview").innerHTML = "";
+        return;
+      }
+
+      $("discountPreview").style.display = "block";
+      $("discountPreview").innerHTML = `
+        <strong>Descuento aplicado al registro</strong>
+        <div class="discount-preview-amount">
+          <div><span>Precio base</span><strong>${currency.format(baseCoursePrice)}</strong></div>
+          <div><span>Descuento</span><strong>-${currency.format(discount)}</strong></div>
+          <div><span>Valor final</span><strong>${currency.format(finalCoursePrice)}</strong></div>
+        </div>
+      `;
+    }
+
+    function setupRegistrationDiscountPreview() {
+      ["coursePrice", "discount"].forEach(id => {
+        const element = $(id);
+        if (!element) return;
+        element.addEventListener("input", renderDiscountPreview);
+        element.addEventListener("change", renderDiscountPreview);
+      });
+
+      renderDiscountPreview();
     }
 
     function settingsDocRef() {
@@ -5713,6 +5853,8 @@
 
       if ($("scanDayLabel")) $("scanDayLabel").style.display = attendanceEnabled ? "block" : "none";
       if ($("scanDay")) $("scanDay").style.display = attendanceEnabled ? "block" : "none";
+
+      renderDiscountPreview();
     }
 
     async function loadCourseSettings() {
@@ -5965,7 +6107,7 @@
     }
 
     function getBalance(student) {
-      return Math.max(Number(student?.coursePrice || 0) - getPaidTotal(student), 0);
+      return Math.max(getFinalCoursePrice(student) - getPaidTotal(student), 0);
     }
 
     function cancelledTicketHtml(student = {}) {
@@ -6074,7 +6216,9 @@
           refunded: true,
           refundStatus: "completed",
           refundAmount: getPaidTotal(student),
-          originalCoursePrice: Number(student.coursePrice || 0),
+          originalCoursePrice: getFinalCoursePrice(student),
+          originalBaseCoursePrice: getBaseCoursePrice(student),
+          originalDiscountAmount: getDiscountAmount(student),
           originalPaidTotal: getPaidTotal(student),
           financialStatus: "closed",
           cancelledAt: new Date().toISOString(),
@@ -6263,6 +6407,211 @@
       }
     }
 
+    function buildEditLocationOptions(student) {
+      const current = String(student?.city || student?.courseLocation || "").trim();
+      const configured = getConfiguredSites();
+      const all = [...new Set([current, ...configured].map(site => String(site || "").trim()).filter(Boolean))];
+      const fallback = getCourseMode(student) === "virtual" ? ["Virtual"] : configured;
+      return all.length ? all : fallback;
+    }
+
+    function getEditPricing() {
+      const baseCoursePrice = parseCOP($("editCoursePrice")?.value || 0);
+      const discount = parseCOP($("editDiscount")?.value || 0);
+      const deposit = parseCOP($("editDeposit")?.value || 0);
+      const extraPaid = parseCOP($("editExtraPaid")?.value || 0);
+      const finalCoursePrice = Math.max(baseCoursePrice - discount, 0);
+      const paidTotal = deposit + extraPaid;
+      const balance = Math.max(finalCoursePrice - paidTotal, 0);
+      return { baseCoursePrice, discount, deposit, extraPaid, finalCoursePrice, paidTotal, balance };
+    }
+
+    function renderEditPricePreview() {
+      if (!$("editPricePreview")) return;
+
+      const { baseCoursePrice, discount, finalCoursePrice, paidTotal, balance } = getEditPricing();
+
+      $("editPricePreview").innerHTML = `
+        <strong>Resumen actualizado del alumno</strong>
+        <div class="discount-preview-amount">
+          <div><span>Precio base</span><strong>${currency.format(baseCoursePrice)}</strong></div>
+          <div><span>Descuento</span><strong>-${currency.format(discount)}</strong></div>
+          <div><span>Valor final</span><strong>${currency.format(finalCoursePrice)}</strong></div>
+          <div><span>Total abonado</span><strong>${currency.format(paidTotal)}</strong></div>
+          <div><span>Saldo</span><strong>${currency.format(balance)}</strong></div>
+          <div><span>Estado</span><strong>${balance <= 0 ? "Pagado" : "Pendiente"}</strong></div>
+        </div>
+      `;
+    }
+
+    function openEditStudentDialog(student) {
+      if (!student) return;
+
+      if (isCancelledStudent(student)) {
+        alert("Este cupo está cancelado. No se puede editar.");
+        return;
+      }
+
+      const baseCoursePrice = getBaseCoursePrice(student) || getFinalCoursePrice(student) || Number(courseSettings.coursePrice || DEFAULT_COURSE_SETTINGS.coursePrice);
+      const discount = getDiscountAmount(student);
+      const deposit = Number(student.deposit || 0);
+      const extraPaid = Number(student.extraPaid || 0);
+      const locationOptions = buildEditLocationOptions(student);
+      const locationLabel = getCourseMode(student) === "virtual" ? "Modalidad" : "Ciudad / sede";
+      const currentLocation = String(student.city || student.courseLocation || (getCourseMode(student) === "virtual" ? "Virtual" : "")).trim();
+
+      $("editStudentBody").innerHTML = `
+        <form id="editStudentForm" autocomplete="off">
+          <input type="hidden" id="editStudentId" value="${escapeHtml(student.id)}" />
+
+          <div class="student-big">
+            <h2>${escapeHtml(student.name || "Alumno")}</h2>
+            <p class="mini-note" style="margin:0;">Ticket: ${escapeHtml(student.id)}</p>
+          </div>
+
+          <label for="editName">Nombre completo</label>
+          <input id="editName" type="text" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" value="${escapeHtml(student.name || "")}" required />
+
+          <label for="editPhone">Número de teléfono <span style="color:#64748b;font-weight:700;">(opcional)</span></label>
+          <input id="editPhone" type="tel" autocomplete="off" autocorrect="off" spellcheck="false" value="${escapeHtml(student.phone || "")}" />
+
+          <label for="editCity">${locationLabel}</label>
+          <select id="editCity" autocomplete="off" required>
+            ${locationOptions.map(site => `<option value="${escapeHtml(site)}" ${site === currentLocation ? "selected" : ""}>${escapeHtml(site)}</option>`).join("")}
+          </select>
+
+          <div class="row">
+            <div>
+              <label for="editCoursePrice">Precio base del curso (COP)</label>
+              <input id="editCoursePrice" class="money-input" type="text" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" value="${formatCOPInput(baseCoursePrice)}" required />
+            </div>
+            <div>
+              <label for="editDiscount">Descuento aplicado (COP)</label>
+              <input id="editDiscount" class="money-input" type="text" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" value="${formatCOPInput(discount)}" />
+            </div>
+          </div>
+
+          <label for="editDiscountReason">Motivo del descuento</label>
+          <input id="editDiscountReason" type="text" autocomplete="off" autocorrect="off" spellcheck="false" value="${escapeHtml(student.discountReason || "")}" />
+
+          <div class="row">
+            <div>
+              <label for="editDeposit">Abono inicial / reserva (COP)</label>
+              <input id="editDeposit" class="money-input" type="text" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" value="${formatCOPInput(deposit)}" required />
+            </div>
+            <div>
+              <label for="editExtraPaid">Abonos adicionales (COP)</label>
+              <input id="editExtraPaid" class="money-input" type="text" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" value="${formatCOPInput(extraPaid)}" />
+            </div>
+          </div>
+
+          <div id="editPricePreview" class="alert alert-success" style="margin-top:12px;"></div>
+
+          <label for="editNotes">Nota opcional</label>
+          <input id="editNotes" type="text" autocomplete="off" autocorrect="off" spellcheck="false" value="${escapeHtml(student.notes || "")}" />
+
+          <div class="btns">
+            <button class="primary" type="submit" id="saveEditStudentBtn">Guardar cambios</button>
+            <button class="secondary" type="button" id="cancelEditStudentBtn">Cancelar</button>
+          </div>
+
+          <p class="mini-note">
+            Al guardar, el sistema recalcula el valor final, saldo y estado del alumno. El mismo QR seguirá funcionando.
+          </p>
+        </form>
+      `;
+
+      setupMoneyInputs($("editStudentBody"));
+      ["editCoursePrice", "editDiscount", "editDeposit", "editExtraPaid"].forEach(id => {
+        const input = $(id);
+        if (!input) return;
+        input.addEventListener("input", renderEditPricePreview);
+        input.addEventListener("change", renderEditPricePreview);
+      });
+
+      renderEditPricePreview();
+
+      $("cancelEditStudentBtn").onclick = () => editStudentDialog.close();
+      $("editStudentForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await saveEditedStudent(student);
+      });
+
+      editStudentDialog.showModal();
+    }
+
+    async function saveEditedStudent(originalStudent) {
+      if (!originalStudent) return;
+
+      const { baseCoursePrice, discount, deposit, extraPaid, finalCoursePrice, paidTotal, balance } = getEditPricing();
+      const name = String($("editName")?.value || "").trim();
+      const city = String($("editCity")?.value || "").trim();
+      const discountReason = String($("editDiscountReason")?.value || "").trim();
+
+      if (!name) {
+        alert("Escribe el nombre del alumno.");
+        return;
+      }
+
+      if (!city) {
+        alert("Selecciona una ciudad, sede o modalidad.");
+        return;
+      }
+
+      if (!baseCoursePrice || baseCoursePrice <= 0) {
+        alert("Escribe un precio válido para el curso.");
+        return;
+      }
+
+      if (discount > baseCoursePrice) {
+        alert("El descuento no puede ser mayor al precio base del curso.");
+        return;
+      }
+
+      if (paidTotal > finalCoursePrice) {
+        const confirmOverpay = confirm("Los abonos superan el valor final del curso. ¿Deseas guardar el alumno como pagado completo de todas formas?");
+        if (!confirmOverpay) return;
+      }
+
+      const patch = {
+        name,
+        phone: cleanPhone($("editPhone")?.value || ""),
+        city,
+        courseLocation: city,
+        baseCoursePrice,
+        coursePriceBeforeDiscount: baseCoursePrice,
+        discountAmount: discount,
+        discount,
+        discountReason,
+        coursePrice: finalCoursePrice,
+        deposit,
+        extraPaid,
+        balance,
+        status: balance <= 0 ? "paid" : "pending",
+        notes: String($("editNotes")?.value || "").trim(),
+        editedAt: new Date().toISOString(),
+        editedBy: currentUser?.email || "admin"
+      };
+
+      try {
+        $("saveEditStudentBtn").disabled = true;
+        $("saveEditStudentBtn").textContent = "Guardando...";
+        const updated = await updateStudent(originalStudent.id, patch);
+        if (!updated) return;
+        editStudentDialog.close();
+        alert("Alumno actualizado correctamente. El ticket conserva el mismo QR.");
+        renderValidationFromUrl();
+      } catch (error) {
+        console.error(error);
+        alert("No se pudo actualizar el alumno. Revisa las reglas de Firestore o la consola del navegador.");
+      } finally {
+        if ($("saveEditStudentBtn")) {
+          $("saveEditStudentBtn").disabled = false;
+          $("saveEditStudentBtn").textContent = "Guardar cambios";
+        }
+      }
+    }
+
     async function deleteStudentById(id) {
       if (!confirm("¿Seguro que quieres cancelar este cupo? El alumno saldrá del listado activo, no sumará en la contabilidad y su QR mostrará el mensaje de cancelación y devolución.")) return;
       if (!requireFirebase() || !isAdminLogged()) return;
@@ -6291,7 +6640,9 @@
           return;
         }
 
-        const originalCoursePrice = Number(student.coursePrice || 0);
+        const originalCoursePrice = getFinalCoursePrice(student);
+        const originalBaseCoursePrice = getBaseCoursePrice(student);
+        const originalDiscountAmount = getDiscountAmount(student);
         const originalDeposit = Number(student.deposit || 0);
         const originalExtraPaid = Number(student.extraPaid || 0);
         const originalPaidTotal = originalDeposit + originalExtraPaid;
@@ -6307,6 +6658,8 @@
           financialStatus: "closed",
           cancellationMessage: CANCELLED_TICKET_MESSAGE,
           originalCoursePrice,
+          originalBaseCoursePrice,
+          originalDiscountAmount,
           originalDeposit,
           originalExtraPaid,
           originalPaidTotal,
@@ -6489,6 +6842,7 @@
                     <div class="actions">
                       <button class="secondary" data-action="ticket" data-id="${s.id}">Ticket</button>
                       ${isCancelled ? "" : `
+                        <button class="secondary" data-action="edit" data-id="${s.id}">Editar</button>
                         <button class="warning" data-action="attendance" data-id="${s.id}">Asistencia</button>
                         <button class="success" data-action="pay" data-id="${s.id}">Pagar</button>
                         <button class="danger" data-action="delete" data-id="${s.id}">Cancelar cupo</button>
@@ -6555,7 +6909,7 @@
 
       getActiveStudents().forEach(student => {
         const sede = String(student.city || "Sin sede").trim() || "Sin sede";
-        const coursePrice = Number(student.coursePrice || 0);
+        const coursePrice = getFinalCoursePrice(student);
         const paidTotal = getPaidTotal(student);
         const balance = getBalance(student);
 
@@ -6746,6 +7100,10 @@
       const courseMode = getCourseMode(student);
       const locationLabel = courseMode === "virtual" ? "Modalidad" : "Sede";
       const locationValue = courseMode === "virtual" ? "Virtual" : (student.city || "Por confirmar");
+      const baseCoursePrice = getBaseCoursePrice(student);
+      const discountAmount = getDiscountAmount(student);
+      const finalCoursePrice = getFinalCoursePrice(student);
+      const discountReason = String(student.discountReason || "").trim();
 
       return `
         <div class="ticket">
@@ -6776,7 +7134,14 @@
 
             <div class="ticket-line"><span>ALUMNOS</span><strong>${escapeHtml(student.name)}</strong></div>
             <div class="ticket-line"><span>${locationLabel}</span><strong>${escapeHtml(locationValue)}</strong></div>
-            <div class="ticket-line"><span>Valor del curso</span><strong>${currency.format(Number(student.coursePrice || 0))}</strong></div>
+            ${discountAmount > 0 ? `
+              <div class="ticket-line"><span>Precio base</span><strong>${currency.format(baseCoursePrice)}</strong></div>
+              <div class="ticket-line"><span>Descuento aplicado</span><strong>-${currency.format(discountAmount)}</strong></div>
+              ${discountReason ? `<div class="ticket-line"><span>Motivo descuento</span><strong>${escapeHtml(discountReason)}</strong></div>` : ``}
+              <div class="ticket-line"><span>Valor final</span><strong>${currency.format(finalCoursePrice)}</strong></div>
+            ` : `
+              <div class="ticket-line"><span>Valor del curso</span><strong>${currency.format(finalCoursePrice)}</strong></div>
+            `}
             <div class="ticket-line"><span>Abono realizado</span><strong>${currency.format(Number(student.deposit || 0))}</strong></div>
             ${balance > 0 ? `
               <div class="ticket-line ticket-balance-pending">
@@ -7036,7 +7401,7 @@
       }
 
       const paidTotal = Number(student.deposit || 0) + Number(student.extraPaid || 0);
-      const balance = Math.max(Number(student.coursePrice || 0) - paidTotal, 0);
+      const balance = getBalance(student);
       const attendanceEnabled = isAttendanceValidationEnabled(student);
 
       $("payDialogBody").innerHTML = `
@@ -7048,10 +7413,17 @@
 
 
         <div class="money-grid">
-          <div class="money"><span>Valor curso</span><strong>${currency.format(Number(student.coursePrice || 0))}</strong></div>
+          <div class="money"><span>Valor final</span><strong>${currency.format(getFinalCoursePrice(student))}</strong></div>
           <div class="money"><span>Abonado</span><strong>${currency.format(paidTotal)}</strong></div>
           <div class="money"><span>Saldo</span><strong>${currency.format(balance)}</strong></div>
         </div>
+
+        ${getDiscountAmount(student) > 0 ? `
+          <div class="alert alert-success">
+            Este alumno tiene un descuento de <strong>${currency.format(getDiscountAmount(student))}</strong>.
+            Valor base: <strong>${currency.format(getBaseCoursePrice(student))}</strong>.
+          </div>
+        ` : ``}
 
         <label for="finalPayment">Pago recibido ahora (COP)</label>
         <input id="finalPayment" class="money-input" type="text" inputmode="numeric" autocomplete="off" autocorrect="off" spellcheck="false" value="${formatCOPInput(balance)}" />
@@ -7103,7 +7475,7 @@
 
         const value = parseCOP($("finalPayment").value);
         const newExtra = Number(student.extraPaid || 0) + value;
-        const newBalance = Math.max(Number(student.coursePrice || 0) - Number(student.deposit || 0) - newExtra, 0);
+        const newBalance = Math.max(getFinalCoursePrice(student) - Number(student.deposit || 0) - newExtra, 0);
         const attendancePatch = attendanceDay ? buildAttendancePatch(student, attendanceDay, "payment+attendance") : {};
 
         const updated = await updateStudent(student.id, {
@@ -7154,7 +7526,7 @@
       }
 
       const paidTotal = Number(student.deposit || 0) + Number(student.extraPaid || 0);
-      const balance = Math.max(Number(student.coursePrice || 0) - paidTotal, 0);
+      const balance = getBalance(student);
       const attendanceEnabled = isAttendanceValidationEnabled(student);
 
       $("validationSection").innerHTML = `
@@ -7509,11 +7881,18 @@
         return;
       }
 
-      const coursePrice = parseCOP($("coursePrice").value);
+      const { baseCoursePrice, discount, finalCoursePrice } = getRegistrationPricing();
+      const coursePrice = finalCoursePrice;
       const deposit = parseCOP($("deposit").value);
+      const discountReason = $("discountReason")?.value.trim() || "";
+
+      if (discount > baseCoursePrice) {
+        alert("El descuento no puede ser mayor al valor configurado del curso.");
+        return;
+      }
 
       if (deposit > coursePrice) {
-        alert("El abono no puede ser mayor al valor del curso.");
+        alert("El abono no puede ser mayor al valor final del curso después del descuento.");
         return;
       }
 
@@ -7524,6 +7903,11 @@
         courseName: getCourseName(),
         courseMode: getCourseMode(),
         attendanceValidationRequired: isAttendanceValidationEnabled(),
+        baseCoursePrice,
+        coursePriceBeforeDiscount: baseCoursePrice,
+        discountAmount: discount,
+        discount,
+        discountReason,
         coursePrice,
         deposit,
         extraPaid: 0,
@@ -7548,6 +7932,7 @@
 
         e.target.reset();
         setCoursePrice(courseSettings.coursePrice);
+        renderDiscountPreview();
       } catch (error) {
         console.error(error);
         alert("No se pudo guardar el estudiante. Revisa conexión, configuración o reglas de Firestore.");
@@ -7621,6 +8006,7 @@
     $("clearFormBtn").onclick = () => {
       $("studentForm").reset();
       setCoursePrice(courseSettings.coursePrice);
+      renderDiscountPreview();
     };
 
     if ($("closeRegisterDialogBtn")) {
@@ -7639,6 +8025,7 @@
       const student = students.find(s => s.id === id) || await getStudentById(id);
 
       if (action === "ticket" && student) showTicket(student);
+      if (action === "edit" && student) openEditStudentDialog(student);
       if (action === "attendance" && student) {
         const day = Number(prompt("¿Qué día de asistencia deseas registrar? Escribe 1, 2, 3 o 4:", "1") || 0);
         if (![1, 2, 3, 4].includes(day)) return;
@@ -7657,9 +8044,9 @@
     $("stopScanBtn").onclick = stopScanner;
 
     $("exportBtn").onclick = () => {
-      const headers = ["id", "nombre", "telefono", "sede", "valor_curso", "abono", "abono_extra", "saldo", "estado", "asistencia", "fecha"];
+      const headers = ["id", "nombre", "telefono", "sede", "precio_base", "descuento", "valor_final", "motivo_descuento", "abono", "abono_extra", "saldo", "estado", "asistencia", "fecha"];
       const rows = getActiveStudents().map(s => [
-        s.id, s.name, s.phone, s.city, s.coursePrice, s.deposit, s.extraPaid || 0,
+        s.id, s.name, s.phone, s.city, getBaseCoursePrice(s), getDiscountAmount(s), getFinalCoursePrice(s), s.discountReason || "", s.deposit, s.extraPaid || 0,
         getBalance(s),
         s.status, attendanceSummary(s), s.createdAt
       ]);
@@ -7686,6 +8073,7 @@
     });
 
     setupMoneyInputs(document);
+    setupRegistrationDiscountPreview();
 
     initFirebase();
 
